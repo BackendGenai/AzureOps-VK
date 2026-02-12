@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>AzureOps.ai Dashboard</title>
+
+<style>
+body{
+margin:0;
+font-family:Arial;
+background:#f4f6f9;
+}
+
+/* Sidebar */
+
+.sidebar{
+width:220px;
+height:100vh;
+background:#0f2a44;
+color:white;
+position:fixed;
+padding:20px;
+}
+
+.sidebar h2{
+cursor:pointer;
+margin-bottom:30px;
+}
+
+.sidebar p{
+cursor:pointer;
+margin:15px 0;
+}
+
+.sidebar p:hover{
+color:#4fc3f7;
+}
+
+/* Main */
+
+.main{
+margin-left:240px;
+padding:20px;
+}
+
+/* Cards */
+
+.cards{
+display:flex;
+gap:20px;
+}
+
+.card{
+background:white;
+padding:20px;
+border-radius:10px;
+width:250px;
+box-shadow:0 0 5px rgba(0,0,0,0.2);
+}
+
+/* Search */
+
+.search-box{
+margin-top:20px;
+padding:8px;
+width:260px;
+border-radius:6px;
+border:1px solid #ccc;
+}
+
+/* Table */
+
+table{
+width:100%;
+margin-top:20px;
+border-collapse:collapse;
+background:white;
+}
+
+th{
+background:#0f2a44;
+color:white;
+padding:12px;
+text-align:center;
+}
+
+td{
+padding:10px;
+text-align:center;
+border-bottom:1px solid #ddd;
+}
+
+tr:hover{
+background:#eef6ff;
+cursor:pointer;
+}
+
+/* Detail Panel */
+
+.vm-panel{
+position:fixed;
+right:20px;
+top:80px;
+width:300px;
+background:white;
+padding:20px;
+border-radius:10px;
+box-shadow:0 0 10px rgba(0,0,0,0.3);
+}
+</style>
+</head>
+
+<body>
+
+<!-- Sidebar -->
+
+<div class="sidebar">
+
+<h2 onclick="showPage('dashboard')">AzureOps.ai</h2>
+
+<p onclick="showPage('dashboard')">Dashboard</p>
+<p onclick="showPage('rightsizing')">VM Rightsizing</p>
+<p onclick="showPage('alerts')">Alerts</p>
+<p onclick="showPage('settings')">Settings</p>
+
+</div>
+
+<!-- Main -->
+
+<div class="main">
+
+<!-- ================= DASHBOARD ================= -->
+
+<div id="dashboardPage">
+
+<h1>Dashboard</h1>
+
+<div class="cards">
+
+<div class="card">
+<h3>Total Cost</h3>
+<h2 id="totalCost">$0</h2>
+</div>
+
+<div class="card">
+<h3>Cost Savings</h3>
+<h2 id="costSavings">$0</h2>
+</div>
+
+<div class="card">
+<h3>Used Capacity</h3>
+<h2 id="usedCapacity">0%</h2>
+</div>
+
+</div>
+
+<h2>Virtual Machines</h2>
+
+<input
+type="text"
+class="search-box"
+placeholder="Search VM ID..."
+onkeyup="searchVM(this.value)"
+>
+
+<table>
+<thead>
+<tr>
+<th>VM ID</th>
+<th>CPU %</th>
+<th>Memory %</th>
+<th>Monthly Cost ($)</th>
+</tr>
+</thead>
+
+<tbody id="vmTable"></tbody>
+</table>
+
+</div>
+
+<!-- ================= RIGHTSIZING ================= -->
+
+<div id="rightsizingPage" style="display:none">
+
+<h1>VM Rightsizing</h1>
+
+<table>
+<thead>
+<tr>
+<th>VM ID</th>
+<th>CPU %</th>
+<th>Memory %</th>
+<th>Utilization</th>
+<th>Recommendation</th>
+<th>Est. Saving ($)</th>
+</tr>
+</thead>
+
+<tbody id="rightsizingTable"></tbody>
+</table>
+
+</div>
+
+<!-- ================= ALERTS ================= -->
+
+<div id="alertsPage" style="display:none">
+
+<h1>Alerts</h1>
+
+<table>
+<thead>
+<tr>
+<th>VM ID</th>
+<th>Type</th>
+<th>Severity</th>
+<th>Value</th>
+</tr>
+</thead>
+
+<tbody id="alertsTable"></tbody>
+</table>
+
+</div>
+
+<!-- Settings -->
+
+<div id="settingsPage" style="display:none">
+<h1>Settings</h1>
+<p>Configuration panel.</p>
+</div>
+
+</div>
+
+<!-- Detail Panel -->
+
+<div id="vmDetailPanel" class="vm-panel" style="display:none">
+
+<h3>VM Details</h3>
+
+<p><b>VM ID:</b> <span id="d_vm_id"></span></p>
+<p><b>CPU:</b> <span id="d_cpu"></span>%</p>
+<p><b>Memory:</b> <span id="d_memory"></span>%</p>
+<p><b>Network:</b> <span id="d_network"></span></p>
+<p><b>Power:</b> <span id="d_power"></span></p>
+<p><b>Execution:</b> <span id="d_exec"></span></p>
+<p><b>Cost:</b> $<span id="d_cost"></span></p>
+
+<button onclick="closePanel()">Close</button>
+
+</div>
+
+<script>
+
+let allVMs=[];
+
+/* ================= NAVIGATION ================= */
+
+function showPage(page){
+
+const pages=[
+"dashboardPage",
+"rightsizingPage",
+"alertsPage",
+"settingsPage"
+];
+
+pages.forEach(id=>{
+document.getElementById(id).style.display="none";
+});
+
+document.getElementById(page+"Page").style.display="block";
+
+if(page==="dashboard") loadDashboard();
+if(page==="rightsizing") loadRightsizing();
+if(page==="alerts") loadAlerts();
+}
+
+/* ================= DASHBOARD ================= */
+
+async function loadDashboard(){
+
+const res=await fetch("/api/dashboard");
+const data=await res.json();
+
+allVMs=data.vms;
+
+totalCost.innerText="$"+data.metrics.total_cost.toFixed(2);
+costSavings.innerText="$"+data.metrics.cost_savings.toFixed(2);
+usedCapacity.innerText=data.metrics.used_capacity.toFixed(2)+"%";
+
+renderTable(allVMs);
+}
+
+function renderTable(vms){
+
+let rows="";
+
+vms.slice(0,50).forEach(vm=>{
+
+rows+=`
+<tr onclick='showVMDetails(${JSON.stringify(vm)})'>
+<td>${vm.vm_id.slice(-5)}</td>
+<td>${vm.cpu_usage.toFixed(2)}</td>
+<td>${vm.memory_usage.toFixed(2)}</td>
+<td>$${vm.monthly_cost.toFixed(2)}</td>
+</tr>
+`;
+});
+
+vmTable.innerHTML=rows;
+}
+
+/* ================= RIGHTSIZING ================= */
+
+async function loadRightsizing(){
+
+const res = await fetch("/api/rightsizing");
+const data = await res.json();
+
+let rows="";
+
+data.recommendations.forEach(vm=>{
+
+let color =
+vm.recommendation==="Downsize" ? "#2ecc71" :
+vm.recommendation==="Upsize" ? "#e74c3c" :
+"#3498db";
+
+rows+=`
+<tr onclick='showRightsizingDetails(${JSON.stringify(vm)})'>
+
+<td>${vm.vm_id.slice(-5)}</td>
+<td>${vm.cpu_usage.toFixed(1)}</td>
+<td>${vm.memory_usage.toFixed(1)}</td>
+<td>${vm.utilization.toFixed(1)}%</td>
+
+<td style="color:${color};font-weight:bold">
+${vm.recommendation}
+</td>
+
+<td>$${vm.estimated_saving.toFixed(2)}</td>
+
+</tr>
+`;
+});
+
+rightsizingTable.innerHTML=rows;
+}
+
+/* ================= ALERTS ================= */
+
+async function loadAlerts(){
+
+const res = await fetch("/api/alerts");
+const data = await res.json();
+
+let rows="";
+
+data.alerts.forEach(alert=>{
+
+let color =
+alert.severity==="Critical" ? "#e74c3c" :
+alert.severity==="Warning" ? "#f39c12" :
+"#3498db";
+
+rows+=`
+<tr onclick='showAlertDetails(${JSON.stringify(alert)})'>
+
+<td>${alert.vm_id.slice(-5)}</td>
+<td>${alert.type}</td>
+
+<td style="color:${color};font-weight:bold">
+${alert.severity}
+</td>
+
+<td>${alert.value.toFixed(2)}</td>
+
+</tr>
+`;
+});
+
+alertsTable.innerHTML=rows;
+}
+
+/* ================= SEARCH ================= */
+
+function searchVM(value){
+
+const filtered=allVMs.filter(vm=>
+vm.vm_id.toLowerCase()
+.includes(value.toLowerCase())
+);
+
+renderTable(filtered);
+}
+
+/* ================= DETAILS ================= */
+
+function showVMDetails(vm){
+
+vmDetailPanel.style.display="block";
+
+d_vm_id.innerText=vm.vm_id;
+d_cpu.innerText=vm.cpu_usage.toFixed(2);
+d_memory.innerText=vm.memory_usage.toFixed(2);
+d_network.innerText=vm.network_traffic.toFixed(2);
+d_power.innerText=vm.power_consumption.toFixed(2);
+d_exec.innerText=vm.execution_time.toFixed(2);
+d_cost.innerText=vm.monthly_cost.toFixed(2);
+}
+
+function showRightsizingDetails(vm){
+
+vmDetailPanel.style.display="block";
+
+d_vm_id.innerText=vm.vm_id;
+d_cpu.innerText=vm.cpu_usage.toFixed(2);
+d_memory.innerText=vm.memory_usage.toFixed(2);
+d_network.innerText="—";
+d_power.innerText="—";
+d_exec.innerText="—";
+d_cost.innerText=vm.current_cost.toFixed(2);
+}
+
+function showAlertDetails(alert){
+
+vmDetailPanel.style.display="block";
+
+d_vm_id.innerText=alert.vm_id;
+d_cpu.innerText="—";
+d_memory.innerText="—";
+d_network.innerText=alert.type;
+d_power.innerText=alert.severity;
+d_exec.innerText="—";
+d_cost.innerText=alert.value.toFixed(2);
+}
+
+function closePanel(){
+vmDetailPanel.style.display="none";
+}
+
+/* Init */
+
+loadDashboard();
+
+</script>
+
+</body>
+</html>
